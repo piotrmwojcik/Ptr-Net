@@ -1,3 +1,4 @@
+from matplotlib.ticker import MaxNLocator
 from torch import optim
 from torch.utils.data import DataLoader
 
@@ -25,51 +26,60 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=True, num_workers=1)
 
-    n_epochs = 100
+    n_epochs = 1
     train_loss = []
     val_loss = []
 
-    for epoch in range(n_epochs):
-        for batch_id, sample_batch in enumerate(train_loader):
+    print('Before:\n')
+    test_inp = Variable(torch.tensor([[3, 2, 1, 4, 7, 0, 9, 6, 5, 8]]))
+    _, test = pointer(test_inp, Variable(torch.sort(test_inp)[0]))
+    print(test)
 
+    for epoch in range(n_epochs):
+        epoch_train_loss = 0.0
+        epoch_val_loss = 0.0
+
+        for batch_id, sample_batch in enumerate(train_loader):
             inputs = Variable(sample_batch)
             target = Variable(torch.sort(sample_batch)[0])
             if USE_CUDA:
                 inputs = inputs.cuda()
                 target = target.cuda()
 
-            loss = pointer(inputs, target)
+            loss, _ = pointer(inputs, target)
+            train_loss.append(loss.item())
+            epoch_train_loss += loss
 
             adam.zero_grad()
             loss.backward()
             adam.step()
 
-            train_loss.append(loss.item())
+            # train_loss.append(epoch_train_loss / len(train_loader))
 
-            if batch_id % 10 == 0:
-                #clear_output(True)
-                #plt.figure(figsize=(20, 5))
-                #plt.subplot(131)
-                #plt.title('train epoch %s loss %s' % (epoch, train_loss[-1] if len(train_loss) else 'collecting'))
-                #plt.plot(train_loss)
-                #plt.grid()
-                #plt.subplot(132)
-                #plt.title('val epoch %s loss %s' % (epoch, val_loss[-1] if len(val_loss) else 'collecting'))
-                #plt.plot(val_loss)
-                #plt.grid()
-                #plt.show()
-
-                print('train epoch %s loss %s' % (epoch, train_loss[-1] if len(train_loss) else 'collecting'))
-                print('val epoch %s loss %s' % (epoch, val_loss[-1] if len(val_loss) else 'collecting'))
-
+            # print(f"Epoch {epoch} train loss: {train_loss[-1]}")
             if batch_id % 100 == 0:
                 pointer.eval()
-                for val_batch in val_loader:
+                for val_batch_id, val_batch in enumerate(val_loader):
                     inputs = Variable(val_batch)
                     target = Variable(torch.sort(val_batch)[0])
                     if USE_CUDA:
                         inputs = inputs.cuda()
                         target = target.cuda()
-
-                    loss = pointer(inputs, target)
+                    loss, ret = pointer(inputs, target)
                     val_loss.append(loss.item())
+                    epoch_val_loss += loss
+
+        # val_loss.append(epoch_val_loss / len(val_loader))
+        # print(f"Epoch {epoch} validation loss: {val_loss[-1]}")
+
+    print('After:\n')
+    test_inp = Variable(torch.tensor([[3, 2, 1, 4, 7, 0, 9, 6, 5, 8]]))
+    _, test = pointer(test_inp, Variable(torch.sort(test_inp)[0]))
+    print(test)
+
+    plt.plot(train_loss)
+    plt.plot(val_loss)
+    plt.ylabel('loss')
+    plt.xlabel('epoch')
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
+    plt.show()

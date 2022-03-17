@@ -45,4 +45,5 @@ class Attention(nn.Module):
             logits = self.C * F.tanh(logits)
         else:
             logits = logits
+
         return ref, logits

@@ -30,21 +30,11 @@ class PointerNet(nn.Module):
         self.encoder = nn.LSTM(embedding_size, hidden_size, batch_first=True)
         self.decoder = nn.LSTM(embedding_size, hidden_size, batch_first=True)
         self.pointer = Attention(hidden_size, use_tanh=use_tanh, C=tanh_exploration, use_cuda=use_cuda)
-        self.glimpse = Attention(hidden_size, use_tanh=False, use_cuda=use_cuda)
 
         self.decoder_start_input = nn.Parameter(torch.FloatTensor(embedding_size))
         self.decoder_start_input.data.uniform_(-(1. / math.sqrt(embedding_size)), 1. / math.sqrt(embedding_size))
 
         self.criterion = nn.CrossEntropyLoss()
-
-    def apply_mask_to_logits(self, logits, mask, idxs):
-        batch_size = logits.size(0)
-        clone_mask = mask.clone()
-
-        if idxs is not None:
-            clone_mask[[i for i in range(batch_size)], idxs.data] = 1
-            logits[clone_mask] = -np.inf
-        return logits, clone_mask
 
     def forward(self, inputs, target):
         """
@@ -59,31 +49,24 @@ class PointerNet(nn.Module):
         target_embedded = self.embedding(target)
         encoder_outputs, (hidden, context) = self.encoder(embedded)
 
-        mask = torch.zeros(batch_size, seq_len).byte()
-        if self.use_cuda:
-            mask = mask.cuda()
-
-        idxs = None
-
         decoder_input = self.decoder_start_input.unsqueeze(0).repeat(batch_size, 1)
 
         loss = 0
+
+        ret = []
 
         for i in range(seq_len):
 
             _, (hidden, context) = self.decoder(decoder_input.unsqueeze(1), (hidden, context))
 
             query = hidden.squeeze(0)
-            for i in range(self.n_glimpses):
-                ref, logits = self.glimpse(query, encoder_outputs)
-                logits, mask = self.apply_mask_to_logits(logits, mask, idxs)
-                query = torch.bmm(ref, F.softmax(logits).unsqueeze(2)).squeeze(2)
 
             _, logits = self.pointer(query, encoder_outputs)
-            logits, mask = self.apply_mask_to_logits(logits, mask, idxs)
+            logits = F.softmax(logits)
+
+            ret.append(torch.argmax(logits).item())
 
             decoder_input = target_embedded[:, i, :]
 
             loss += self.criterion(logits, target[:, i])
-
-        return loss / seq_len
+        return loss / seq_len, ret
